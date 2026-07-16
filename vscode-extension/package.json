@@ -1,0 +1,113 @@
+{
+  "name": "token-coach",
+  "displayName": "Token Coach",
+  "description": "Claude Code token kullanım koçu: canlı oturum bağlamı, CLAUDE.md lint bulguları, israf teşhisi",
+  "version": "0.1.0",
+  "publisher": "yigit",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tokenCoach",
+          "title": "Token Coach",
+          "icon": "media/token-coach.svg"
+        }
+      ]
+    },
+    "views": {
+      "tokenCoach": [
+        {
+          "id": "tokenCoach.sidebar",
+          "name": "Koç",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "tokenCoach.refresh",
+          "when": "view == tokenCoach.sidebar",
+          "group": "navigation"
+        },
+        {
+          "command": "tokenCoach.openDashboard",
+          "when": "view == tokenCoach.sidebar",
+          "group": "navigation"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tokenCoach.refresh",
+        "title": "Token Coach: Bulguları Yenile",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tokenCoach.showFindings",
+        "title": "Token Coach: Bulguları Göster"
+      },
+      {
+        "command": "tokenCoach.openDashboard",
+        "title": "Token Coach: Paneli Aç",
+        "icon": "$(graph)"
+      }
+    ],
+    "configuration": {
+      "title": "Token Coach",
+      "properties": {
+        "tokenCoach.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Python yorumlayıcısının yolu"
+        },
+        "tokenCoach.coachPath": {
+          "type": "string",
+          "default": "",
+          "description": "cli.py'ı içeren Token Coach klasörü. Boş bırakılırsa çalışma alanı klasörlerinde cli.py aranır."
+        },
+        "tokenCoach.dbPath": {
+          "type": "string",
+          "default": "",
+          "description": "token_coach.db yolu. Boş bırakılırsa coachPath/token_coach.db kullanılır."
+        },
+        "tokenCoach.contextWarnTokens": {
+          "type": "number",
+          "default": 120000,
+          "description": "Durum çubuğu bu bağlam boyutunda sarıya döner (/clear düşünme zamanı)"
+        },
+        "tokenCoach.contextDangerTokens": {
+          "type": "number",
+          "default": 180000,
+          "description": "Durum çubuğu bu bağlam boyutunda kırmızıya döner"
+        },
+        "tokenCoach.autoIngest": {
+          "type": "boolean",
+          "default": true,
+          "description": "Teşhis ve panel öncesi logları otomatik ingest et (artımlı, hızlı)"
+        },
+        "tokenCoach.diagnoseDays": {
+          "type": "number",
+          "default": 7,
+          "description": "Oturum bulgularını son N günle sınırla (0 = tüm geçmiş)"
+        },
+        "tokenCoach.notifyUsdThreshold": {
+          "type": "number",
+          "default": 5,
+          "description": "Tahmini israf bu doların üstündeyse günde bir koçluk bildirimi göster (0 = kapalı)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+# Kişisel veri — Claude Code oturum loglarından üretilen yerel veritabanı.
+# Asla repoya girmemeli: kendi oturumlarının dökümünü içerir.
+token_coach.db
+
+# Makineye özel Claude Code ayarları (izin listesi, yerel yollar).
+# Paylaşılan ayar .claude/settings.json'dır; bu dosya kişiseldir.
+.claude/settings.local.json
+
+# Üretilen çıktılar
+dashboard.html
+*.vsix
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node (yalnızca vsce paketleme için; çalışma zamanı bağımlılığı yok)
+node_modules/
+package-lock.json
