@@ -14,6 +14,9 @@ const os = require('os');
 const path = require('path');
 const { turnCostUsd } = require('./pricing');
 
+// Canlı kurallar yalnızca son turn'lere bakar; geçmiş sınırsız büyümesin.
+const MAX_HISTORY = 300;
+
 /** Yol -> Claude Code proje slug karşılaştırma anahtarı. */
 function slugKey(p) {
   return p.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
@@ -80,6 +83,8 @@ class SessionWatcher {
       turns: 0,
       costUsd: 0,
       lastTs: null,
+      // Canlı koç kurallarının beslendiği turn geçmişi (son MAX_HISTORY turn).
+      history: [],
     };
   }
 
@@ -170,15 +175,40 @@ class SessionWatcher {
     if (changed) this.onUpdate(this.stats);
   }
 
-  /** Bir JSONL kaydını istatistiklere işler; assistant+usage ise true döner. */
+  /** Geçmişe bir turn ekler, üst sınırı aşarsa baştan kırpar. */
+  _pushHistory(entry) {
+    const h = this.stats.history;
+    h.push(entry);
+    if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY);
+  }
+
+  /** Bir JSONL kaydını istatistiklere işler; sayılan bir turn ise true döner. */
   _apply(rec) {
     if (rec.type !== 'assistant' || rec.isSidechain) return false;
+
+    // parser/ingest.py ile aynı ölçüt (bkz. is_error).
+    const isError = Boolean(rec.isApiErrorMessage || rec.error);
     const msg = rec.message || {};
     const usage = msg.usage;
     const model = msg.model;
+    const s = this.stats;
+
+    // Hata kayıtları çoğu zaman usage taşımaz / model '<synthetic>' gelir.
+    // Bunları maliyete katmayız ama geçmişe yazarız — error_loop kuralı
+    // ardışık hataları buradan görür.
+    if (isError && (!usage || !model || model === '<synthetic>')) {
+      this._pushHistory({
+        ts: rec.timestamp || s.lastTs,
+        contextTokens: s.contextTokens,
+        costUsd: 0,
+        isError: true,
+      });
+      s.lastTs = rec.timestamp || s.lastTs;
+      return true;
+    }
+
     if (!usage || !model || model === '<synthetic>') return false;
 
-    const s = this.stats;
     s.model = model;
     s.contextTokens =
       (usage.input_tokens || 0) +
@@ -186,8 +216,16 @@ class SessionWatcher {
       (usage.cache_creation_input_tokens || 0);
     s.outputTokens += usage.output_tokens || 0;
     s.turns += 1;
-    s.costUsd += turnCostUsd(model, usage) || 0;
+    const cost = turnCostUsd(model, usage) || 0;
+    s.costUsd += cost;
     s.lastTs = rec.timestamp || s.lastTs;
+
+    this._pushHistory({
+      ts: rec.timestamp || s.lastTs,
+      contextTokens: s.contextTokens,
+      costUsd: cost,
+      isError,
+    });
     return true;
   }
 }

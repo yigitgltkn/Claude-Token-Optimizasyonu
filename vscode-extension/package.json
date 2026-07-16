@@ -85,12 +85,17 @@
         "tokenCoach.contextWarnTokens": {
           "type": "number",
           "default": 120000,
-          "description": "Durum çubuğu bu bağlam boyutunda sarıya döner (/clear düşünme zamanı)"
+          "description": "Bu bağlam boyutunun üstünde, yeni içerik de gelmiyorsa /clear önerilir"
         },
         "tokenCoach.contextDangerTokens": {
           "type": "number",
           "default": 180000,
-          "description": "Durum çubuğu bu bağlam boyutunda kırmızıya döner"
+          "description": "Bu bağlam boyutundan sonra /clear önerisi kırmızıya döner"
+        },
+        "tokenCoach.burnRateWarnUsdPerHour": {
+          "type": "number",
+          "default": 10,
+          "description": "Son 15 dakikanın harcama hızı bu doları/saat aşarsa kenar çubuğunda uyarı gösterilir"
         },
         "tokenCoach.autoIngest": {
           "type": "boolean",

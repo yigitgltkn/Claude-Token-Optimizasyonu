@@ -16,6 +16,7 @@ const vscode = require('vscode');
 const { SessionWatcher, claudeProjectDirFor } = require('./sessionWatcher');
 const { runDiagnose, runIngest, runDashboard } = require('./diagnose');
 const { SidebarProvider } = require('./sidebar');
+const { analyze } = require('./liveCoach');
 
 const SEVERITY_BY_RULE = {
   total_size: vscode.DiagnosticSeverity.Warning,
@@ -76,25 +77,47 @@ function shortModel(model) {
   return model ? model.replace(/^claude-/, '') : '?';
 }
 
-/** Canlı oturum güncellemesi: hem durum çubuğunu hem kenar çubuğunu besler. */
+/**
+ * Canlı oturum güncellemesi: her turn'de canlı kuralları çalıştırır, sonucu
+ * durum çubuğuna ve kenar çubuğuna dağıtır. Saf JS — Python'a gitmez.
+ */
 function onSessionUpdate(stats) {
-  updateStatusBar(stats);
-  sidebar.setState({
-    session: stats,
-    warn: config().get('contextWarnTokens'),
-    danger: config().get('contextDangerTokens'),
+  const warn = config().get('contextWarnTokens');
+  const danger = config().get('contextDangerTokens');
+  const live = analyze(stats, {
+    warn,
+    danger,
+    burnRateUsdPerHour: config().get('burnRateWarnUsdPerHour'),
   });
+
+  updateStatusBar(stats, live);
+  sidebar.setState({ session: stats, live, warn, danger });
 }
 
-function updateStatusBar(stats) {
+/** Önerilerin en yükseği: danger > warn > info. */
+function topSeverity(suggestions) {
+  if (suggestions.some((s) => s.severity === 'danger')) return 'danger';
+  if (suggestions.some((s) => s.severity === 'warn')) return 'warn';
+  return suggestions.length ? 'info' : null;
+}
+
+function updateStatusBar(stats, live) {
   const warn = config().get('contextWarnTokens');
   const danger = config().get('contextDangerTokens');
   const ctx = stats.contextTokens;
+  const suggestions = (live && live.suggestions) || [];
 
-  statusBar.text = `$(zap) ${fmtTokens(ctx)} ctx · ${shortModel(stats.model)}`;
-  if (ctx >= danger) {
+  // Durum çubuğu sessiz koçluk yüzeyi: öneri varsa metne kısa bir ipucu ekler.
+  const clearNow = suggestions.find((s) => s.id === 'clear_now');
+  const tip = clearNow ? ' · /clear öner' : '';
+  statusBar.text = `$(zap) ${fmtTokens(ctx)} ctx · ${shortModel(stats.model)}${tip}`;
+  // Renk = eylem çağrısı, bağlam boyutu değil. Bağlam büyük olsa da hâlâ yeni
+  // bilgi geliyorsa /clear yanlış tavsiyedir; o durumda kırmızı yakmak yanlış
+  // alarmdır ve kullanıcıyı renge karşı duyarsızlaştırır.
+  const sev = topSeverity(suggestions);
+  if (sev === 'danger') {
     statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-  } else if (ctx >= warn) {
+  } else if (sev === 'warn') {
     statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   } else {
     statusBar.backgroundColor = undefined;
@@ -107,11 +130,12 @@ function updateStatusBar(stats) {
   md.appendMarkdown(`| Model | ${stats.model || '—'} |\n`);
   md.appendMarkdown(`| Turn | ${stats.turns} |\n`);
   md.appendMarkdown(`| Oturum maliyeti | ≈ $${stats.costUsd.toFixed(2)} |\n`);
+  if (live && live.carryPerTurn) {
+    md.appendMarkdown(`| Turn başına taşıma | ≈ $${live.carryPerTurn.toFixed(3)} |\n`);
+  }
   md.appendMarkdown(`| Log | ${path.basename(stats.file)} |\n`);
-  if (ctx >= warn) {
-    md.appendMarkdown(
-      `\n⚠️ Bağlam ${fmtTokens(warn)} eşiğini aştı — konu değiştiyse **/clear** iyi bir fikir.`
-    );
+  for (const s of suggestions) {
+    md.appendMarkdown(`\n**${s.title}** — ${s.detail}\n`);
   }
   statusBar.tooltip = md;
   statusBar.show();

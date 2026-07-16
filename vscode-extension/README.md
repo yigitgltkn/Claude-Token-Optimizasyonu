@@ -4,6 +4,10 @@ Claude Code token kullanım koçu. Saf JavaScript — derleme adımı ve `npm in
 
 ## Yüzeyler
 
+- **"Şimdi" kartı (canlı koç):** kenar çubuğunun en üstünde, *o an* eyleme
+  dönüşebilir öneriler — `clear_now` (bağlam büyük **ve** yeni içerik gelmiyor),
+  `error_loop` (ardışık API hatası), `cost_velocity` (harcama hızı). Öneri yoksa
+  kart hiç görünmez. Bildirim (toast) yok: sessiz yüzey.
 - **Kenar çubuğu (ana GUI):** Activity Bar'daki Token Coach ikonu. Canlı bağlam
   göstergesi (eşiğe göre yeşil/sarı/kırmızı bar), tahmini israf özeti ($ / token /
   bulgu sayısı) ve maliyete göre sıralı bulgu kartları. CLAUDE.md bulgusuna
@@ -66,7 +70,28 @@ node --check src/*.js
 
 ## Mimari not
 
-Eklenti ince bir kabuk: tüm kural motoru Python tarafında
-(`cli.py diagnose --json`). Canlı oturum izleme ise tamamen eklentide —
-`~/.claude/projects/<slug>/*.jsonl` dosyası offset tabanlı artımlı okunur,
-Python'a ihtiyaç duymaz.
+İki motor var:
+
+- **Geriye dönük teşhis** — Python tarafında (`cli.py diagnose --json`).
+  Karşı-olgusal tahminler üretir ("şunu yapsaydın şu kadar kazanırdın").
+- **Canlı koç** (`src/liveCoach.js`) — tamamen eklentide, Python'suz, her
+  turn'de anında. `~/.claude/projects/<slug>/*.jsonl` offset tabanlı artımlı
+  okunur.
+
+Canlı koç bilerek **yalnızca doğrudan ölçülen** büyüklükleri raporlar (mevcut
+bağlamın turn başına okuma maliyeti, gerçekleşen harcama hızı, ardışık hata
+sayısı) — "şu kadar israf ettin" demez, "şu an durum bu" der. Karşı-olgusal
+tahminler abartmaya açıktır ve bir koçluk aracının tek sermayesi güvendir.
+
+Aynı ilke arayüzde de geçerli: **sayı = olgu, renk = eylem çağrısı.** Durum
+çubuğu yalnızca gerçekten bir öneri varken renklenir; bağlam büyük olsa da hâlâ
+yeni bilgi geliyorsa `/clear` yanlış tavsiyedir ve renk yakılmaz.
+
+## Testler
+
+```
+node --test
+```
+
+`liveCoach.js` ve `sessionWatcher.js` `vscode` modülüne bağımlı değildir, bu
+yüzden doğrudan test edilebilir (30 test, bağımlılık yok).

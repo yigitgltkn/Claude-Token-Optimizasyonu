@@ -70,9 +70,34 @@ Kabul: Bir haftalık gerçek verinle okunabilir rapor.
 - Webview inline script'i template string içinde olduğu için `node --check` görmez →
   ayrı doğrulayıcı ile denetlendi (sözdizimi + render + XSS kaçışı + boş/hata durumları)
 
+## Faz 10 — Canlı koç (yapıldı, 2026-07-16)
+- `src/liveCoach.js` — saf JS, Python'suz, her turn'de anında. Kurallar:
+  `clear_now` (bağlam eşik üstü **ve** son 8 turn'de %10'dan büyük sıçrama yok → taşıma modu),
+  `error_loop` (3 ardışık API hatası), `cost_velocity` (son 15 dk gerçekleşen $/saat)
+- **Dürüstlük ilkesi:** canlı kurallar karşı-olgusal tahmin üretmez, yalnızca doğrudan ölçülen
+  büyüklükleri raporlar. Bayrak: turn başına taşıma maliyeti = bağlam × input × 0.1 (cache read)
+- `sessionWatcher`: turn geçmişi eklendi (son 300, bellek sınırlı). Hata kayıtları usage taşımaz /
+  `<synthetic>` model gelir → önceden tamamen atlanıyordu, `error_loop` hiç tetiklenemezdi; artık
+  maliyete katılmadan geçmişe yazılır (ölçüt ingest.py'daki `isApiErrorMessage || error` ile aynı)
+- Yüzey: kenar çubuğunda "Şimdi" kartı + durum çubuğu metni. **Toast yok** — sürekli bildiren
+  eklenti kapatılır; sessiz varsayılan.
+- **Renk = eylem çağrısı, bağlam boyutu değil.** Bağlam büyük ama yeni içerik geliyorsa /clear
+  yanlış tavsiye → renk yakılmaz (yanlış alarm, renge duyarsızlaştırır).
+- Eklentiye ilk testler: 30 test (`node --test`). liveCoach/sessionWatcher `vscode`'a bağımsız.
+- Git reposu kuruldu, ilk commit (39 dosya). `.claude/settings.local.json` dışlandı — diğer özel
+  proje adlarını sızdırıyordu.
+
 ## Sonrası (backlog)
+- **Sıradaki: stale_context est_wasted dürüstlüğü.** `est_wasted_tokens = baseline * len(turns_after)`
+  ([rules/stale_context.py:120]) "/clear sıfır maliyetle sıfırlar" varsayıyor; gerçekte sistem promptu +
+  CLAUDE.md + görevi yeniden anlatma geri gelir (~10-20K). Dürüst tasarruf = baseline − yeniden_kurulum.
+  Panelin manşet rakamı ($39.29) bu yüzden şişkin. Koçluk aracının tek sermayesi güven — canlı koç
+  (Faz 10) bu ilkeyle yazıldı, geriye dönük kurallar da hizalanmalı.
 - Kalan Faz 3 kuralı: subagent_overuse (+ subagent_underuse sinyali — mevcut veride sidechain hiç yok)
-- stale_context est_wasted hesabını rafine et (baseline x turn abartıyor; "temizlenebilir fark" daha dürüst)
+- Canlı koç sonraki kurallar: cache_thrash (tekrarlayan cache_creation sıçraması → önek geçersizleşiyor).
+  model_overkill bilerek ertelendi: içerik görünmediği için "basit iş" token sayısından güvenilir
+  çıkarılamıyor, yanlış öneri riski yüksek.
+- Token Coach'un kendi CLAUDE.md'si boş (0 byte) — kendi aracını kendi üstünde çalıştır
 - Eklenti canlı çalışma zamanı denetimi: kurulu (`yigit.token-coach@0.1.0`) ama kenar çubuğu/
   durum çubuğu gerçek VS Code oturumunda henüz gözle doğrulanmadı (statik doğrulama yapıldı)
 - Dağıtım: Marketplace yerine GitHub release'e `.vsix` (karar 2026-07-16). Marketplace'e uygun

@@ -45,6 +45,8 @@ class SidebarProvider {
     this.view = null;
     this.state = {
       session: null,
+      /** @type {{suggestions: Array<object>, carryPerTurn: number|null, burnRate: number|null}|null} */
+      live: null,
       diagnose: null,
       loading: false,
       error: null,
@@ -140,6 +142,26 @@ class SidebarProvider {
   .meta { display: flex; gap: 14px; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
   .hint { margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--warn); }
   .hint.danger { color: var(--danger); }
+  .carry { margin-top: 8px; font-size: 11px; opacity: .65; line-height: 1.5; }
+
+  /* --- simdi (canli oneriler) --- */
+  .sug {
+    display: flex; gap: 9px; padding: 10px 12px; margin-bottom: 6px;
+    border-radius: 6px; align-items: flex-start;
+    background: var(--vscode-editorWidget-background, rgba(127,127,127,.08));
+    border: 1px solid transparent;
+    border-left: 3px solid var(--vscode-charts-blue, #58a6ff);
+  }
+  .sug.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+  .sug.danger { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .sug-icon { font-size: 14px; line-height: 1.3; flex-shrink: 0; }
+  .sug-title { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+  .sug-detail { font-size: 11.5px; line-height: 1.5; opacity: .85; }
+  .sug-detail b, .sug-detail code {
+    font-family: var(--vscode-editor-font-family);
+    background: rgba(127,127,127,.18);
+    padding: 0 4px; border-radius: 3px; font-weight: 600;
+  }
 
   /* --- ozet --- */
   .totals { display: flex; gap: 8px; }
@@ -199,10 +221,16 @@ class SidebarProvider {
   const RULE_LABELS = ${JSON.stringify(RULE_LABELS)};
   const SCOPE_LABELS = ${JSON.stringify(SCOPE_LABELS)};
 
+  const SUG_ICONS = { clear_now: '🧹', error_loop: '🔁', cost_velocity: '💸' };
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
+  }
+  // Önce kaçış, sonra slash komutlarını <code>'a çevir — sıra önemli.
+  function fmtDetail(s) {
+    return esc(s).replace(/\\/(clear|compact|model)\\b/g, '<code>/$1</code>');
   }
   function fmtTokens(nn) {
     if (nn >= 1e6) return (nn / 1e6).toFixed(1) + 'M';
@@ -210,7 +238,23 @@ class SidebarProvider {
     return String(nn || 0);
   }
 
-  function renderSession(s, warn, danger) {
+  /** "Şimdi" — canlı öneriler. Öneri yoksa hiç yer kaplamaz. */
+  function renderLive(live) {
+    if (!live || !live.suggestions || !live.suggestions.length) return '';
+    let html = '<h2>Şimdi</h2>';
+    for (const s of live.suggestions) {
+      const icon = SUG_ICONS[s.id] || '•';
+      html +=
+        '<div class="sug ' + esc(s.severity) + '">' +
+          '<div class="sug-icon">' + icon + '</div>' +
+          '<div><div class="sug-title">' + esc(s.title) + '</div>' +
+          '<div class="sug-detail">' + fmtDetail(s.detail) + '</div></div>' +
+        '</div>';
+    }
+    return html;
+  }
+
+  function renderSession(s, warn, danger, live) {
     if (!s) {
       return '<h2>Canlı oturum</h2><div class="card"><div class="empty">' +
         'Aktif Claude Code oturumu bulunamadı. Bu klasörde bir oturum başlatınca ' +
@@ -221,13 +265,12 @@ class SidebarProvider {
     const color = ctx >= danger ? 'var(--danger)' : ctx >= warn ? 'var(--warn)' : 'var(--ok)';
     const model = (s.model || '?').replace(/^claude-/, '');
 
-    let hint = '';
-    if (ctx >= danger) {
-      hint = '<div class="hint danger">Bağlam ' + fmtTokens(danger) + ' eşiğini aştı — ' +
-             '<b>/clear</b> ile taze başlamak ciddi tasarruf sağlar.</div>';
-    } else if (ctx >= warn) {
-      hint = '<div class="hint">Bağlam ' + fmtTokens(warn) + ' eşiğini aştı — ' +
-             'konu değiştiyse <b>/clear</b> iyi bir fikir.</div>';
+    // Öğüt vermek "Şimdi" kartının işi; burası yalnızca olgu gösterir.
+    // Taşıma maliyeti doğrudan hesaplanır — tahmin değil.
+    let carry = '';
+    if (live && live.carryPerTurn) {
+      carry = '<div class="carry">Her yeni turn, bu geçmişi yeniden okumak için ' +
+              '~$' + live.carryPerTurn.toFixed(3) + '</div>';
     }
 
     return '<h2>Canlı oturum</h2><div class="card">' +
@@ -238,7 +281,7 @@ class SidebarProvider {
       '<div class="bar"><i style="width:' + pct.toFixed(1) + '%;background:' + color + '"></i></div>' +
       '<div class="meta"><span>' + (s.turns || 0) + ' turn</span>' +
         '<span>≈ $' + (s.costUsd || 0).toFixed(2) + '</span></div>' +
-      hint +
+      carry +
     '</div>';
   }
 
@@ -285,7 +328,7 @@ class SidebarProvider {
 
   function render(st) {
     const root = document.getElementById('root');
-    let html = renderSession(st.session, st.warn, st.danger);
+    let html = renderLive(st.live) + renderSession(st.session, st.warn, st.danger, st.live);
 
     if (st.error) {
       html += '<h2>Teşhis</h2><div class="error">' + esc(st.error) + '</div>';
