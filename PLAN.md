@@ -100,10 +100,32 @@ Kabul: Bir haftalık gerçek verinle okunabilir rapor.
   rakam, kazandırdığından fazlasını kaybettirir.
 - 89 test (3 yeni: taban çıkarma, atılabilir yokken bulgu yok, koşu başına ayrı taban)
 
+## Faz 12 — Bulgu cinsleri: israf vs bilgi (yapıldı, 2026-07-16)
+Denetim sonucu, beklentinin tersi çıktı:
+- **cache_efficiency denetimi geçti.** Ölçüme dayanıyor (gerçekten faturalanan cache_creation),
+  aritmetiği elle doğrulandı, çift sayım yok (pricing.py 5m/1h varsa cache_creation'ı yok sayıyor).
+  Manşetin %52'si buradan ve sağlam. İnce detay doğru: yeniden yazım *geçilen* modelin tarifesiyle
+  faturalanıyor (aynı token, farklı tutar).
+- **model_mismatch ölü koddu.** 5 oturumun 5'i `turn/istek > 8` kapısından eleniyordu. Eşik sohbet
+  tarzı kullanım varsayıyordu; Claude Code ajanik — bir istek uzun bir araç döngüsüne açılır,
+  10-30 turn/istek normaldir. Kural hiç ateşlenmiyordu.
+
+Yapılan:
+- Eşikler ajanik gerçekliğe kalibre edildi (sonnet 8→25, haiku 3→10)
+- **Bulgu sözleşmesine `kind` eklendi: `waste` | `info`.** Manşet yalnızca `waste` toplar.
+  model_mismatch artık `kind="info"`, `est_wasted_usd=0`, fark `counterfactual_usd`'de.
+- **Kritik:** yalnızca eşiği kalibre edip israfa saymaya devam etseydik manşet
+  **$18.60 → $74.87'ye fırlardı (4x şişme)**. Kalibrasyon ve israftan çıkarma birlikte gitmeliydi.
+- Gerekçe: fark, ucuz modelin *aynı token profilini* üreteceğini varsayar — bilinemez bir en-iyi
+  durum. Ayrıca zor işte güçlü model kullanmak israf değildir; token sayıları zoru kolaydan ayıramaz.
+  turn/istek zaten zayıf bir vekil — kural bu yüzden yalnızca bilgilendirir, suçlamaz.
+- cli.py (JSON + metin), weekly.py, kenar çubuğu ayrı "Bilgi — israf değil" bölümü gösteriyor
+- 92 test (yeni: info manşete girmiyor, ajanik eşikler ulaşılabilir, metin çıktısı ayırıyor)
+
 ## Sonrası (backlog)
 - Kalan Faz 3 kuralı: subagent_overuse (+ subagent_underuse sinyali — mevcut veride sidechain hiç yok)
-- Diğer kuralların dürüstlük denetimi: model_mismatch karşı-olgusal maliyet hesabı da aynı
-  gözle gözden geçirilmeli (cache_efficiency doğrudan ölçüme dayandığı için düşük riskli)
+- dashboard.py yalnızca stale_context + lint çalıştırıyor; cache_efficiency/model_mismatch panelde
+  yok (weekly.RULES'ta var). Panel kural setini hizala + `kind` ayrımını panele de taşı.
 - Canlı koç sonraki kurallar: cache_thrash (tekrarlayan cache_creation sıçraması → önek geçersizleşiyor).
   model_overkill bilerek ertelendi: içerik görünmediği için "basit iş" token sayısından güvenilir
   çıkarılamıyor, yanlış öneri riski yüksek.

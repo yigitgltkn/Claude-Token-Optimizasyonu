@@ -76,18 +76,36 @@ def render_markdown(findings: list, start: datetime, end: datetime) -> str:
         lines.append("Bu hafta bulgu yok.")
         return "\n".join(lines) + "\n"
 
-    findings_sorted = sorted(findings, key=lambda f: f.est_wasted_tokens, reverse=True)
-    total_wasted = sum(f.est_wasted_tokens for f in findings_sorted)
-    lines.append(f"**{len(findings_sorted)} bulgu, tahmini israf ~{total_wasted} token.**")
+    # Ölçülen israf ile bilgi amaçlı karşılaştırma ayrı raporlanır: bir
+    # karşı-olgusal farkı israf toplamına katmak abartı olur (bkz.
+    # rules/model_mismatch.py).
+    waste = [f for f in findings if getattr(f, "kind", "waste") == "waste"]
+    info = [f for f in findings if getattr(f, "kind", "waste") == "info"]
+
+    waste_sorted = sorted(waste, key=lambda f: f.est_wasted_tokens, reverse=True)
+    total_wasted = sum(f.est_wasted_tokens for f in waste_sorted)
+    lines.append(f"**{len(waste_sorted)} bulgu, tahmini israf ~{total_wasted} token.**")
     lines.append("")
 
-    for i, finding in enumerate(findings_sorted, start=1):
+    for i, finding in enumerate(waste_sorted, start=1):
         recommendation = RECOMMENDATIONS.get(finding.rule, DEFAULT_RECOMMENDATION)
         lines.append(f"## {i}. {finding.rule} — oturum `{finding.session_id}`")
         lines.append("")
         lines.append(f"- **Kanıt:** {finding.message}")
         lines.append(f"- **Öneri:** {recommendation}")
         lines.append(f"- **Tahmini tasarruf:** {_format_savings(finding)}")
+        lines.append("")
+
+    if info:
+        lines.append("## Bilgi — israf değil, karşılaştırma")
+        lines.append("")
+        lines.append(
+            "Aşağıdakiler ölçülen israf değil, düşünmeye değer fiyat karşılaştırmalarıdır; "
+            "yukarıdaki toplama dahil değildir."
+        )
+        lines.append("")
+        for finding in sorted(info, key=lambda f: getattr(f, "counterfactual_usd", 0.0), reverse=True):
+            lines.append(f"- **{finding.rule}** — oturum `{finding.session_id}`: {finding.message}")
         lines.append("")
 
     return "\n".join(lines)

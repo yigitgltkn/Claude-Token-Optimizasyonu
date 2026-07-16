@@ -181,6 +181,8 @@ class SidebarProvider {
   .finding.clickable:hover { background: var(--vscode-list-hoverBackground, rgba(127,127,127,.16)); }
   .finding.sev-high { border-left-color: var(--danger); }
   .finding.sev-mid { border-left-color: var(--warn); }
+  /* Bilgi bulgusu: nötr, iddiasız — israf kartlarıyla karışmasın. */
+  .finding.info { border-left-color: var(--vscode-charts-blue, #58a6ff); opacity: .85; }
   .f-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
   .f-rule { font-size: 11px; font-weight: 600; }
   .f-usd { font-size: 11px; font-variant-numeric: tabular-nums; opacity: .85; white-space: nowrap; }
@@ -287,21 +289,52 @@ class SidebarProvider {
 
   function renderTotals(d) {
     if (!d) return '';
+    // Bulgu sayacı da yalnızca israfı sayar — toplamlar (cli.py) öyle hesaplanıyor.
+    const wasteCount = (d.findings || []).filter((f) => f.kind !== 'info').length;
     return '<h2>Tahmini israf</h2><div class="totals">' +
       '<div class="card"><div class="v">$' + (d.total_est_wasted_usd || 0).toFixed(2) + '</div>' +
         '<div class="k">maliyet</div></div>' +
       '<div class="card"><div class="v">' + fmtTokens(d.total_est_wasted_tokens || 0) + '</div>' +
         '<div class="k">token</div></div>' +
-      '<div class="card"><div class="v">' + (d.findings || []).length + '</div>' +
+      '<div class="card"><div class="v">' + wasteCount + '</div>' +
         '<div class="k">bulgu</div></div>' +
     '</div>';
   }
 
+  /**
+   * "Bilgi" — israf değil, düşünmeye değer karşılaştırmalar (kind="info").
+   * Manşet toplamına dahil değildir; ayrı bölümde ve $ rozeti olmadan durur
+   * ki israf bulgularıyla karışmasın.
+   */
+  function renderInfo(d) {
+    if (!d) return '';
+    const list = (d.findings || [])
+      .filter((f) => f.kind === 'info')
+      .sort((a, b) => (b.counterfactual_usd || 0) - (a.counterfactual_usd || 0));
+    if (!list.length) return '';
+
+    let html = '<h2>Bilgi — israf değil</h2>';
+    for (const f of list) {
+      const label = RULE_LABELS[f.rule] || f.rule;
+      const diff = f.counterfactual_usd
+        ? '<span class="f-usd">fark $' + f.counterfactual_usd.toFixed(2) + '</span>'
+        : '';
+      html +=
+        '<div class="finding info">' +
+          '<div class="f-head"><span class="f-rule">' + esc(label) + '</span>' + diff + '</div>' +
+          '<div class="f-msg">' + fmtDetail(f.message) + '</div>' +
+          '<div class="f-scope">oturum · ' + esc(String(f.scope || '').slice(0, 8)) + '…</div>' +
+        '</div>';
+    }
+    return html;
+  }
+
   function renderFindings(d) {
     if (!d) return '';
-    const list = (d.findings || []).slice().sort(
-      (a, b) => (b.est_wasted_usd || 0) - (a.est_wasted_usd || 0)
-    );
+    // Yalnızca ölçülen israf; kind="info" ayrı bölüme gider.
+    const list = (d.findings || [])
+      .filter((f) => f.kind !== 'info')
+      .sort((a, b) => (b.est_wasted_usd || 0) - (a.est_wasted_usd || 0));
     if (!list.length) {
       return '<h2>Bulgular</h2><div class="card"><div class="empty">' +
         'Bulgu yok — bu pencerede ciddi bir israf görünmüyor. 👍</div></div>';
@@ -338,7 +371,7 @@ class SidebarProvider {
       html += '<h2>Teşhis</h2><div class="card"><div class="empty">' +
               'Henüz analiz çalışmadı. <b>Yenile</b> ile başlat.</div></div>';
     } else {
-      html += renderTotals(st.diagnose) + renderFindings(st.diagnose);
+      html += renderTotals(st.diagnose) + renderFindings(st.diagnose) + renderInfo(st.diagnose);
     }
 
     html += '<div class="actions">' +

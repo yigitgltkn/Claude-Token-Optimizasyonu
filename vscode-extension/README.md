@@ -83,6 +83,14 @@ bağlamın turn başına okuma maliyeti, gerçekleşen harcama hızı, ardışı
 sayısı) — "şu kadar israf ettin" demez, "şu an durum bu" der. Karşı-olgusal
 tahminler abartmaya açıktır ve bir koçluk aracının tek sermayesi güvendir.
 
+Aynı ilke geriye dönük bulgularda `kind` alanıyla uygulanır:
+
+- `waste` — ölçülen, farklı bir alışkanlığın ödemeyeceği maliyet. Manşete girer.
+- `info` — bilmeye değer ama iddia olmayan bir olgu. Manşete **girmez**, ayrı
+  bölümde durur. Örnek: `model_mismatch`'in fiyat karşılaştırması, ucuz modelin
+  aynı token profilini üreteceği varsayımına dayanır — bilinemez bir en-iyi
+  durum, dolayısıyla israf değildir.
+
 Aynı ilke arayüzde de geçerli: **sayı = olgu, renk = eylem çağrısı.** Durum
 çubuğu yalnızca gerçekten bir öneri varken renklenir; bağlam büyük olsa da hâlâ
 yeni bilgi geliyorsa `/clear` yanlış tavsiyedir ve renk yakılmaz.

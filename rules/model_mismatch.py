@@ -1,23 +1,38 @@
-"""Counterfactual model-cost analysis per session.
+"""Counterfactual model-cost comparison per session — informational only.
 
 For each (session, model) segment, this rule aggregates the segment's token
 profile, prices it at the actual model's rates, and re-prices it at the next
-cheaper tier (Fable/Opus -> Sonnet 5, Sonnet -> Haiku 4.5). If the session's
-difficulty signals stay under the thresholds — API error rate and assistant
-turns per user prompt (a proxy for how much back-and-forth each request
-needed) — the segment is flagged with the estimated saving.
+cheaper tier (Fable/Opus -> Sonnet 5, Sonnet -> Haiku 4.5).
 
-This is deliberately a *counterfactual price statement*, not a verdict: the
-message says what the same token profile would have cost on the cheaper
-model, with a confidence qualifier, and leaves the decision to the user.
-Whether the cheaper model would actually have produced equally good output is
-unknowable from token counts alone.
+**This rule reports `kind="info"` and contributes nothing to the waste
+total.** The difference between the two prices is a *price comparison*, not
+waste, and the distinction is load-bearing:
+
+  - The re-priced figure assumes the cheaper model would have produced the
+    same token profile — the same answers in the same number of turns. That
+    is an unknowable best case. A cheaper model needing 30% more turns would
+    erase the entire difference.
+  - Using a strong model on hard work is not waste; it is the point. Nothing
+    in the token counts can tell hard work from easy work.
+
+So the number is offered as a fact to think about ("this segment cost $X;
+the same profile on Sonnet would price at $Y"), never as a verdict. Summing
+it into "you wasted $N" would over-claim in exactly the way stale_context
+used to before its rebuild-floor fix.
+
+Difficulty gate: sessions whose API error rate or assistant-turns-per-user-
+prompt run high are skipped, since those signal work the cheaper tier likely
+could not have carried. MAX_TURNS_PER_PROMPT is calibrated for *agentic*
+Claude Code usage, where one user prompt routinely fans out into a long tool
+loop; the original chat-shaped thresholds (8 / 3) excluded every real session
+outright and left the rule permanently silent. Even so, turns-per-prompt is
+a weak proxy — another reason this rule only informs and never accuses.
 
 Tokenizer note: Fable 5, Opus 4.7/4.8 and Sonnet 5 share the same tokenizer,
 so Opus/Fable -> Sonnet 5 needs no token adjustment. Haiku 4.5 still uses the
 older tokenizer, which encodes the same text into roughly 1/1.3x the tokens;
 HAIKU_TOKEN_FACTOR approximates that when re-pricing a Sonnet segment on
-Haiku. Rough by design — the savings estimate dominates any factor error.
+Haiku. Rough by design — the comparison dominates any factor error.
 """
 
 import sqlite3
@@ -45,11 +60,17 @@ MAX_ERROR_RATE = 0.05
 # Max assistant turns per user prompt for a downgrade to stay plausible,
 # keyed by *target*: dropping to Haiku demands a much simpler session shape
 # than dropping Opus-tier work to Sonnet.
+#
+# Calibrated for agentic usage, not chat. In Claude Code a single user prompt
+# fans out into a tool loop, so even a light session runs ~10 turns/prompt and
+# a heavy one 25-30+; the previous chat-shaped values (8 / 3) were unreachable
+# and silently disabled the rule on every real session. These are rough lines
+# on a weak signal — acceptable only because the rule merely informs.
 MAX_TURNS_PER_PROMPT = {
-    "claude-sonnet-5": 8.0,
-    "claude-haiku-4-5": 3.0,
+    "claude-sonnet-5": 25.0,
+    "claude-haiku-4-5": 10.0,
 }
-MIN_SAVINGS_USD = 0.50
+MIN_DIFFERENCE_USD = 0.50
 
 
 @dataclass
@@ -57,8 +78,12 @@ class Finding:
     rule: str
     session_id: str
     message: str
-    est_wasted_tokens: int  # always 0 — this rule's estimate is in dollars
-    est_wasted_usd: float = 0.0
+    est_wasted_tokens: int  # always 0 — a price comparison is not waste
+    est_wasted_usd: float = 0.0  # always 0.0 — never counted as waste
+    # Informational: excluded from the waste total by cli.collect_diagnose_findings.
+    kind: str = "info"
+    # What the cheaper tier would have cost less, if the token profile held.
+    counterfactual_usd: float = 0.0
 
 
 def _token_factor(target: str) -> float:
@@ -125,12 +150,12 @@ def detect(
             cache_5m=int(seg["cache_5m"] * factor),
             cache_1h=int(seg["cache_1h"] * factor),
         )
-        savings = actual - counterfactual
-        if savings < MIN_SAVINGS_USD:
+        difference = actual - counterfactual
+        if difference < MIN_DIFFERENCE_USD:
             continue
 
         confidence = (
-            "yüksek güven" if error_rate == 0 and turns_per_prompt <= max_tpp / 2 else "orta güven"
+            "güçlü sinyal" if error_rate == 0 and turns_per_prompt <= max_tpp / 2 else "zayıf sinyal"
         )
         findings.append(
             Finding(
@@ -138,13 +163,17 @@ def detect(
                 session_id=session_id,
                 message=(
                     f"{seg['model']} üzerindeki {turns} assistant turn = ${actual:.2f}; aynı "
-                    f"token profili {target} ile = ${counterfactual:.2f}, tasarruf = ${savings:.2f} "
-                    f"({confidence}: hata oranı %{error_rate * 100:.0f}, istek başına "
-                    f"{turns_per_prompt:.1f} turn). Bu karşı-olgusal fiyat hesabıdır; ucuz modelin "
-                    f"aynı çıktı kalitesini vereceğinin garantisi değildir."
+                    f"token profili {target} ile = ${counterfactual:.2f} olurdu — aradaki fark "
+                    f"${difference:.2f} ({confidence}: hata oranı %{error_rate * 100:.0f}, istek "
+                    f"başına {turns_per_prompt:.1f} turn). "
+                    f"Bu bir fiyat karşılaştırmasıdır, israf değil: ucuz modelin aynı işi aynı "
+                    f"turn sayısında bitireceğinin garantisi yok — daha fazla turn gerekseydi fark "
+                    f"kapanırdı. Zor işte güçlü model kullanmak israf değildir; karar senin."
                 ),
                 est_wasted_tokens=0,
-                est_wasted_usd=round(savings, 4),
+                est_wasted_usd=0.0,
+                kind="info",
+                counterfactual_usd=round(difference, 4),
             )
         )
     return findings
