@@ -33,16 +33,40 @@ def test_detect_flags_monotonic_growth_past_threshold():
     finding = findings[0]
     assert finding.rule == "stale_context"
     assert finding.session_id == "sess-x"
-    # largest jump: 8_000 -> 52_000 (+44_000); baseline=8_000; 3 turns after (incl. jump turn)
-    assert finding.est_wasted_tokens == 8_000 * 3
+    # largest jump: 8_000 -> 52_000 (+44_000); baseline=8_000; 3 turns after
+    # (incl. jump turn). Rebuild floor is the run's opening turn (5_000) — a
+    # /clear here would have re-paid that — so only 8_000-5_000 was clearable.
+    assert finding.est_wasted_tokens == 3_000 * 3
+
+
+def test_detect_subtracts_rebuild_floor_not_the_whole_prefix():
+    """A /clear does not restart at zero: the system prompt, tools and
+    CLAUDE.md come straight back. The run's first turn measures exactly what
+    that fresh start costs in this session, so only the excess above it is
+    genuinely clearable. Charging the full prefix would inflate the finding."""
+    turns = _turns(20_000, 30_000, 100_000, 101_000)
+    findings = stale_context.detect("sess-floor", turns)
+    assert len(findings) == 1
+    # baseline=30_000, rebuild floor=20_000 -> clearable=10_000, 2 turns after
+    assert findings[0].est_wasted_tokens == 10_000 * 2
+    # the naive "whole prefix" answer would have been 6x larger
+    assert findings[0].est_wasted_tokens < 30_000 * 2
+
+
+def test_detect_no_finding_when_nothing_is_clearable():
+    """Largest jump right at the run's start: the prefix carried forward *is*
+    the fresh-start floor, so there is nothing a /clear could have shed."""
+    turns = _turns(10_000, 90_000, 91_000, 92_000)
+    assert stale_context.detect("sess-nofloor", turns) == []
 
 
 def test_detect_picks_the_largest_jump_not_first_or_last():
     turns = _turns(1_000, 31_000, 32_000, 90_000, 91_000)
     findings = stale_context.detect("sess-y", turns)
     assert len(findings) == 1
-    # largest jump: 32_000 -> 90_000 (+58_000); baseline=32_000; 2 turns after
-    assert findings[0].est_wasted_tokens == 32_000 * 2
+    # largest jump: 32_000 -> 90_000 (+58_000); baseline=32_000;
+    # rebuild floor=1_000 -> clearable=31_000; 2 turns after
+    assert findings[0].est_wasted_tokens == 31_000 * 2
 
 
 def test_detect_resets_after_a_real_clear_drop():
@@ -52,8 +76,22 @@ def test_detect_resets_after_a_real_clear_drop():
     turns = _turns(5_000, 20_000, 60_000, 62_000, 10_000, 25_000, 30_000)
     findings = stale_context.detect("sess-z", turns)
     assert len(findings) == 1
-    # largest jump in run 1: 20_000 -> 60_000 (+40_000); baseline=20_000; 2 turns after
-    assert findings[0].est_wasted_tokens == 20_000 * 2
+    # largest jump in run 1: 20_000 -> 60_000 (+40_000); baseline=20_000;
+    # rebuild floor=5_000 -> clearable=15_000; 2 turns after
+    assert findings[0].est_wasted_tokens == 15_000 * 2
+
+
+def test_detect_each_run_uses_its_own_rebuild_floor():
+    """After a /clear the floor is re-measured: run 2's fresh start is its own
+    opening turn, not the session's."""
+    # run 1: 5_000 -> 10_000 -> 70_000 (clearable 5_000 x 1)
+    # /clear -> run 2 opens at 30_000 (a heavier CLAUDE.md-laden restart)
+    # run 2: 30_000 -> 40_000 -> 120_000 -> 121_000 (clearable 10_000 x 2)
+    turns = _turns(5_000, 10_000, 70_000, 30_000, 40_000, 120_000, 121_000)
+    findings = stale_context.detect("sess-multi", turns)
+    assert len(findings) == 2
+    assert findings[0].est_wasted_tokens == 5_000 * 1
+    assert findings[1].est_wasted_tokens == 10_000 * 2
 
 
 @pytest.fixture
@@ -116,8 +154,9 @@ def test_run_filters_sidechain_and_synthetic_turns(conn):
     assert len(findings) == 1
     assert findings[0].session_id == session_id
     # context_tokens per turn = input_tokens + cache_read + cache_creation = 5000/8000/52000/55000/58000
-    # largest jump: 8_000 -> 52_000 (+44_000); baseline=8_000; 3 turns after
-    assert findings[0].est_wasted_tokens == 8_000 * 3
+    # largest jump: 8_000 -> 52_000 (+44_000); baseline=8_000;
+    # rebuild floor=5_000 -> clearable=3_000; 3 turns after
+    assert findings[0].est_wasted_tokens == 3_000 * 3
 
 
 def test_run_uses_input_plus_cache_not_input_tokens_alone(conn):

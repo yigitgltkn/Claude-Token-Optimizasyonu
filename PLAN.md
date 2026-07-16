@@ -87,13 +87,23 @@ Kabul: Bir haftalık gerçek verinle okunabilir rapor.
 - Git reposu kuruldu, ilk commit (39 dosya). `.claude/settings.local.json` dışlandı — diğer özel
   proje adlarını sızdırıyordu.
 
+## Faz 11 — stale_context dürüstlük düzeltmesi (yapıldı, 2026-07-16)
+- Eski hesap `est_wasted_tokens = baseline * len(turns_after)` "/clear sıfır maliyetle sıfırlar"
+  varsayıyordu. Gerçekte sistem promptu + CLAUDE.md + görevin yeniden anlatılması geri gelir.
+- Yeni: `clearable = baseline − rebuild_floor`, `rebuild_floor` = koşunun ilk turn'ünün bağlamı.
+  **Ölçülüyor, tahmin edilmiyor:** monoton koşunun ilk turn'ü tanımı gereği taze başlangıçtır
+  (oturum açılışı ya da /clear sonrası), yani "yeniden başlamak bu oturumda kaça mal oldu"nun
+  gerçek cevabı. Her koşu kendi tabanını kullanır.
+- `clearable <= 0` ise bulgu hiç üretilmez (en büyük sıçrama koşunun başındaysa atılacak önek yok).
+- **Gerçek veride etki: $39.29 → $18.50 (%53 düşüş), 9 → 8 bulgu.** Araç iki katından fazla
+  abartıyormuş. Yanlılık bilerek eksik-iddia yönünde: kullanıcının yakalayabileceği şişkin bir
+  rakam, kazandırdığından fazlasını kaybettirir.
+- 89 test (3 yeni: taban çıkarma, atılabilir yokken bulgu yok, koşu başına ayrı taban)
+
 ## Sonrası (backlog)
-- **Sıradaki: stale_context est_wasted dürüstlüğü.** `est_wasted_tokens = baseline * len(turns_after)`
-  ([rules/stale_context.py:120]) "/clear sıfır maliyetle sıfırlar" varsayıyor; gerçekte sistem promptu +
-  CLAUDE.md + görevi yeniden anlatma geri gelir (~10-20K). Dürüst tasarruf = baseline − yeniden_kurulum.
-  Panelin manşet rakamı ($39.29) bu yüzden şişkin. Koçluk aracının tek sermayesi güven — canlı koç
-  (Faz 10) bu ilkeyle yazıldı, geriye dönük kurallar da hizalanmalı.
 - Kalan Faz 3 kuralı: subagent_overuse (+ subagent_underuse sinyali — mevcut veride sidechain hiç yok)
+- Diğer kuralların dürüstlük denetimi: model_mismatch karşı-olgusal maliyet hesabı da aynı
+  gözle gözden geçirilmeli (cache_efficiency doğrudan ölçüme dayandığı için düşük riskli)
 - Canlı koç sonraki kurallar: cache_thrash (tekrarlayan cache_creation sıçraması → önek geçersizleşiyor).
   model_overkill bilerek ertelendi: içerik görünmediği için "basit iş" token sayısından güvenilir
   çıkarılamıyor, yanlış öneri riski yüksek.

@@ -26,15 +26,33 @@ Within such a run, the single turn with the largest context-size increase
 over its predecessor is flagged as the best-guess /clear point: it's the
 turn most likely to have added a large, one-off chunk of content (a big file
 read, tool output, etc.) that subsequent turns didn't need to keep paying
-for. `est_wasted_tokens` approximates the cost of *not* clearing there: the
-context size right before that jump (the "stale prefix") is carried
-forward, unnecessarily, through every turn from the jump point to the end of
-the run.
+for.
+
+**`est_wasted_tokens` counts only the *clearable* part of the prefix, not the
+whole prefix.** /clear does not reset the context to zero: a fresh session
+immediately pays for the system prompt, tool definitions, CLAUDE.md, and
+restating the task. Charging the full pre-jump context as "waste" would
+assume a free restart and inflate every finding — this rule used to do
+exactly that (`baseline * turns_after`), which overstated the headline
+number.
+
+The rebuild floor is *measured, not guessed*: the first turn of a monotonic
+run is by definition a fresh start (either the session's opening turn or the
+turn right after a /clear), so its context size is what starting over
+actually cost in this very session. The honest saving is therefore
+
+    clearable = baseline - rebuild_floor
+
+carried across every turn from the jump point to the end of the run. When
+the largest jump happens at the very start of a run there is no stale prefix
+to shed (`clearable == 0`) and no finding is emitted at all.
 
 This is a heuristic, not a semantic analysis — the flagged jump could just
 be organic, needed growth in a legitimately long task. Precision (e.g. using
 turn content once available, or requiring a minimum jump size) can improve
-later; for now this surfaces candidates for a human to look at.
+later; for now this surfaces candidates for a human to look at. The bias is
+deliberately toward under-claiming: a coaching tool's only asset is trust,
+and a number the user can catch being inflated costs more than it earns.
 """
 
 import sqlite3
@@ -117,7 +135,18 @@ def detect(session_id: str, turns_raw: list[dict]) -> list[Finding]:
         baseline = turns[run[jump_pos - 1]].context_tokens
         jump_size = turns[jump_idx].context_tokens - baseline
         turns_after = run[jump_pos:]
-        est_wasted_tokens = baseline * len(turns_after)
+
+        # /clear sıfıra indirmez: sistem promptu + CLAUDE.md + görevin yeniden
+        # anlatılması geri gelir. Bu koşunun ilk turn'ü tam olarak "taze
+        # başlangıç" olduğu için, yeniden kurulum maliyetini tahmin etmek
+        # yerine kullanıcının kendi verisinden ölçüyoruz.
+        rebuild_floor = turns[run[0]].context_tokens
+        clearable = baseline - rebuild_floor
+        if clearable <= 0:
+            # En büyük sıçrama koşunun hemen başında — atılabilecek bayat
+            # önek yok, dolayısıyla ortada bulgu da yok.
+            continue
+        est_wasted_tokens = clearable * len(turns_after)
 
         findings.append(
             Finding(
@@ -125,9 +154,11 @@ def detect(session_id: str, turns_raw: list[dict]) -> list[Finding]:
                 session_id=session_id,
                 message=(
                     f"Bağlam /clear yapılmadan {peak} tokene kadar büyüdü. "
-                    f"En büyük sıçrama {turns[jump_idx].ts} anında +{jump_size} token; "
-                    f"{baseline} tokenlik bayat önek sonraki {len(turns_after)} turn "
-                    f"boyunca taşındı — orası iyi bir /clear noktasıydı."
+                    f"En büyük sıçrama {turns[jump_idx].ts} anında +{jump_size} token. "
+                    f"Orada /clear yapsaydın {clearable} token atılabilirdi ve sonraki "
+                    f"{len(turns_after)} turn boyunca taşınmazdı. "
+                    f"(Taze başlangıç bedava değil: bu oturum {rebuild_floor} tokenle "
+                    f"açıldı — sistem promptu + CLAUDE.md; o kısım /clear sonrası geri gelirdi.)"
                 ),
                 est_wasted_tokens=est_wasted_tokens,
             )
