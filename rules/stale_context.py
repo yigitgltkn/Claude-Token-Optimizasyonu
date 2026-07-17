@@ -153,12 +153,13 @@ def detect(session_id: str, turns_raw: list[dict]) -> list[Finding]:
                 rule="stale_context",
                 session_id=session_id,
                 message=(
-                    f"Bağlam /clear yapılmadan {peak} tokene kadar büyüdü. "
+                    f"Bağlam temizlenmeden {peak} tokene kadar büyüdü. "
                     f"En büyük sıçrama {turns[jump_idx].ts} anında +{jump_size} token. "
-                    f"Orada /clear yapsaydın {clearable} token atılabilirdi ve sonraki "
-                    f"{len(turns_after)} turn boyunca taşınmazdı. "
+                    f"Orada temizleseydin {clearable} token atılabilir ve sonraki "
+                    f"{len(turns_after)} turn boyunca taşınmazdı: konu değiştiyse /clear "
+                    f"(her şeyi at), aynı işe devam ediyorduysan /compact (özet kalır). "
                     f"(Taze başlangıç bedava değil: bu oturum {rebuild_floor} tokenle "
-                    f"açıldı — sistem promptu + CLAUDE.md; o kısım /clear sonrası geri gelirdi.)"
+                    f"açıldı — sistem promptu + CLAUDE.md; o kısım geri gelirdi.)"
                 ),
                 est_wasted_tokens=est_wasted_tokens,
             )

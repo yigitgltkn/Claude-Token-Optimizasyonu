@@ -85,6 +85,20 @@ test('analyze: bayat + eşik üstü → clear_now', () => {
   assert.match(s.detail, /\$0\.079/);
 });
 
+test('clear_now: tek emir değil, /clear ve /compact çatalını sunar', () => {
+  // Araç konunun değişip değişmediğini bilemez; ikisini birden önermeli ki
+  // kararı kullanıcı versin. Regression: eskiden yalnızca /clear diyordu.
+  const stats = {
+    contextTokens: 158000,
+    model: 'claude-opus-4-8',
+    history: history(stalePlateau(150000, STALE_WINDOW + 1)),
+  };
+  const s = analyze(stats, OPTS).suggestions.find((x) => x.id === 'clear_now');
+  assert.match(s.detail, /\/clear/, '/clear seçeneği olmalı');
+  assert.match(s.detail, /\/compact/, '/compact seçeneği olmalı');
+  assert.match(s.title, /\/compact/, 'başlık çatalı yansıtmalı');
+});
+
 test('analyze: 180K üstünde clear_now danger olur', () => {
   const stats = {
     contextTokens: 190000,

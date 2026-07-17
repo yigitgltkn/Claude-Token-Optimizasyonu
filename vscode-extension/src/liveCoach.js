@@ -113,6 +113,9 @@ function analyze(stats, opts) {
   if (!history.length) return { suggestions, carryPerTurn, burnRate };
 
   // 1) clear_now — bağlam büyük ve artık yeni bilgi gelmiyor.
+  // Araç konunun değişip değişmediğini bilemez (içeriği görmez), o yüzden
+  // /clear ile /compact arasında emir vermez, çatalı sunar: kararı ancak
+  // hangi işte olduğunu bilen kullanıcı verebilir.
   if (ctx >= opts.warn && isStale(history, ctx)) {
     const danger = ctx >= opts.danger;
     const cost = carryPerTurn
@@ -121,10 +124,12 @@ function analyze(stats, opts) {
     suggestions.push({
       id: 'clear_now',
       severity: danger ? 'danger' : 'warn',
-      title: '/clear için iyi an',
+      title: '/clear ya da /compact zamanı',
       detail:
         `Bağlam ${fmtTokens(ctx)} ve son ${STALE_WINDOW} turn'de kayda değer yeni ` +
-        `içerik gelmedi — taşıma modundasın.${cost} Konu değiştiyse /clear.`,
+        `içerik gelmedi — taşıma modundasın.${cost} ` +
+        `Konu değiştiyse /clear (her şeyi at, en ucuzu). ` +
+        `Aynı işe devam ediyorsan /compact (özet kalır, iş sürer).`,
     });
   }
 

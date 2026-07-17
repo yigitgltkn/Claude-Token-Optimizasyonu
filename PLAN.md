@@ -122,7 +122,25 @@ Yapılan:
 - cli.py (JSON + metin), weekly.py, kenar çubuğu ayrı "Bilgi — israf değil" bölümü gösteriyor
 - 92 test (yeni: info manşete girmiyor, ajanik eşikler ulaşılabilir, metin çıktısı ayırıyor)
 
+## Faz 13 — /clear vs /compact çatalı (yapıldı, 2026-07-18)
+- Araç fazla /clear-merkezliydi. Kullanıcının verisi bunu doğruladı: 2539 turn boyunca bilinçli
+  /clear ~0; 5 oturumun 4'ünde hiç düşüş yok (tepe 249K-435K); 48f8562c'deki 2 düşüş /clear değil
+  auto-compact'ti (192K/263K'ya iniyor, taze açılış 25-42K). Araç yapmadığı bir şeyi öneriyordu.
+- Kural: araç konunun değişip değişmediğini bilemez (içeriği görmez) → emir değil çatal sunar.
+  Kararı ancak hangi işte olduğunu bilen kullanıcı verebilir.
+- liveCoach clear_now: başlık "/clear ya da /compact zamanı"; konu değiştiyse /clear, aynı işse
+  /compact. stale_context mesajı da aynı çatalı sunuyor. Durum çubuğu ipucu: "/clear|/compact".
+- est_wasted hesabı değişmedi (çatal yalnızca metin); manşet sabit.
+- Test: JS'e çatal regression testi (yalnızca /clear'a dönmeyi engeller). 31 JS + 92 Python.
+
 ## Sonrası (backlog)
+- subagent_underuse: en yüksek getirili kaldıraç (kullanıcının sidechain kullanımı sıfır, bağlam
+  435K'ya çıkıyor). /clear-/compact temizlik; subagent önleme — pislik hiç oluşmuyor. Dürüstlük
+  sorusu: "0 subagent" olgu ama "şu kadar israf" karşı-olgusal → muhtemelen kind="info".
+- rebuild_floor compact hatası: koşunun ilk turn'ü "taze başlangıç" varsayılıyor ama compact
+  sonrası koşu 192K'da başlıyor → o taze değil, clearable fazla düşük çıkıyor (eksik-iddia
+  yönünde, manşet güvende). Düzeltmesi: düşüş açılış bağlamına yakın mı (=/clear) değil mi
+  (=/compact) ayrımı — aynı sezgi çatalı da besliyor.
 - Kalan Faz 3 kuralı: subagent_overuse (+ subagent_underuse sinyali — mevcut veride sidechain hiç yok)
 - dashboard.py yalnızca stale_context + lint çalıştırıyor; cache_efficiency/model_mismatch panelde
   yok (weekly.RULES'ta var). Panel kural setini hizala + `kind` ayrımını panele de taşı.

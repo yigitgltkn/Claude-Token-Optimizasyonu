@@ -109,11 +109,11 @@ function updateStatusBar(stats, live) {
 
   // Durum çubuğu sessiz koçluk yüzeyi: öneri varsa metne kısa bir ipucu ekler.
   const clearNow = suggestions.find((s) => s.id === 'clear_now');
-  const tip = clearNow ? ' · /clear öner' : '';
+  const tip = clearNow ? ' · /clear|/compact' : '';
   statusBar.text = `$(zap) ${fmtTokens(ctx)} ctx · ${shortModel(stats.model)}${tip}`;
   // Renk = eylem çağrısı, bağlam boyutu değil. Bağlam büyük olsa da hâlâ yeni
-  // bilgi geliyorsa /clear yanlış tavsiyedir; o durumda kırmızı yakmak yanlış
-  // alarmdır ve kullanıcıyı renge karşı duyarsızlaştırır.
+  // bilgi geliyorsa temizleme yanlış tavsiyedir; o durumda kırmızı yakmak
+  // yanlış alarmdır ve kullanıcıyı renge karşı duyarsızlaştırır.
   const sev = topSeverity(suggestions);
   if (sev === 'danger') {
     statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
